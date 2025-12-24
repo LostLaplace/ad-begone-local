@@ -4,7 +4,7 @@ from typing import List
 
 import numpy as np
 from openai import OpenAI, pydantic_function_tool
-from openai.types.audio.transcription_verbose import TranscriptionVerbose
+#from openai.types.audio.transcription_verbose import TranscriptionVerbose
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from openai.types.chat.parsed_function_tool_call import ParsedFunctionToolCall
 from pydub import AudioSegment
@@ -12,13 +12,17 @@ from pydub import AudioSegment
 from .models import SegmentAnnotation, Window
 from .notif_path import NOTIF_PATH
 
+import json
+import whisper
+
 CLIENT = OpenAI()
+MODEL = whisper.load_model("tiny")
 
 
 def cached_transcription(
     file_name: str,
     file_transcription: str | None = None,
-) -> TranscriptionVerbose:
+    ):
     if ".mp3" not in file_name:
         raise ValueError("Couldn't find valid file")
 
@@ -27,36 +31,29 @@ def cached_transcription(
 
     if os.path.isfile(file_transcription):
         with open(file_transcription, "r") as f:
-            return TranscriptionVerbose.parse_raw(f.read())
+            return json.load(f)
 
-    audio_file = open(file_name, "rb")
-
-    print("Transcribing audio...")
-    transcription: TranscriptionVerbose = CLIENT.audio.transcriptions.create(
-        file=audio_file,
-        model="whisper-1",
-        response_format="verbose_json",
-        timestamp_granularities=["segment"]
-    )
+    print(f"Transcribing audio {file_name}")
+    transcription = MODEL.transcribe(file_name)
 
     with open(file_transcription, "w") as f:
-        f.write(transcription.model_dump_json())
+        json.dump(transcription, f)
 
     print("Got transcription")
     return transcription
 
 
-def transcription_with_segment_indices(transcription: TranscriptionVerbose) -> str:
+def transcription_with_segment_indices(transcription) -> str:
     res = ""
-    for idx, segment in enumerate(transcription.segments):
-        _segment = segment.text.rstrip(" ")
-        _segment = segment.text.lstrip(" ")
+    for idx, segment in enumerate(transcription["segments"]):
+        _segment = segment["text"].rstrip(" ")
+        _segment = segment["text"].lstrip(" ")
         res += f"Segment {idx}: {_segment}\n"
     return res
 
 
 def cached_annotate_transcription(
-    transcription: TranscriptionVerbose,
+    transcription,
     file_name: str,
     model: str = "gpt-4o-2024-08-06",
 ) -> ParsedChatCompletion:
@@ -104,7 +101,7 @@ def get_ordered_annotations(completion: ParsedChatCompletion) -> list[SegmentAnn
 
 
 def find_ad_time_windows(
-    transcription: TranscriptionVerbose,
+    transcription,
     annotations: list[SegmentAnnotation],
 ) -> list[Window]:
     windows = []
@@ -112,16 +109,16 @@ def find_ad_time_windows(
     current_time = 0.0
     current_segment_type = None
     for ann in annotations:
-        seg = transcription.segments[ann.segment_index]
+        seg = transcription["segments"][ann.segment_index]
         if current_segment_type is None:
             current_segment_type = ann.segment_type
 
         if current_segment_type != ann.segment_type:
-            windows.append(Window(start=current_time, end=seg.start, segment_type=current_segment_type))
+            windows.append(Window(start=current_time, end=seg["start"], segment_type=current_segment_type))
             current_segment_type = ann.segment_type
-        current_time = seg.end
+        current_time = seg["end"]
 
-    windows.append(Window(start=current_time, end=transcription.segments[-1].end, segment_type=current_segment_type))
+    windows.append(Window(start=current_time, end=transcription["segments"][-1]["end"], segment_type=current_segment_type))
 
     return windows
 

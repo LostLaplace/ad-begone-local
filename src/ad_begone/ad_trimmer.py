@@ -1,4 +1,4 @@
-from openai.types.audio.transcription_verbose import TranscriptionVerbose
+#from openai.types.audio.transcription_verbose import TranscriptionVerbose
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
 from .models import Window
@@ -22,7 +22,7 @@ class AdTrimmer:
         self.transcription_cache_file = file_name + ".transcription.json"
         self.segments_cache_file = file_name + ".segments.json"
 
-    def transcription(self) -> TranscriptionVerbose:
+    def transcription(self):
         return cached_transcription(
             file_name=self.file_name,
             file_transcription=self.transcription_cache_file,
